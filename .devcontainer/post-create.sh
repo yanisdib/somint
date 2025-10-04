@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /workspace/somint
+cd /workspaces/somint
 echo "[post-create] Python: $(python --version)"
 echo "[post-create] Poetry:  $(poetry --version)"
 echo "[post-create] Moving to engine directory..."
@@ -10,7 +10,7 @@ cd engine
 echo "[post-create] Checking for pyproject.toml..."
 if [ ! -f "pyproject.toml" ]; then 
   echo "[post-create] No pyproject.toml found. Creating one and installing dependencies..."
-  poetry init -n && poetry add opencv-python-headless numpy matplotlib scikit-image pydantic fastapi uvicorn
+  poetry init -n && poetry add opencv-python-headless "numpy<2" matplotlib scikit-image pydantic fastapi uvicorn
   echo "[post-create] pyproject.toml created and dependencies added."
 fi
 
