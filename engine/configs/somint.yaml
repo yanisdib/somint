@@ -1,0 +1,6 @@
+paths:
+  raw: data/raw
+  interim: data/interim
+  rectified: data/rectified
+  patches: data/patches
+  reports: data/reports

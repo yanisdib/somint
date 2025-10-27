@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "Somint Engine"
+version = "0.1.0"
+description = "Somint Engine - AI-powered TCG Grading Engine"
+authors = ["Yanis DIB <contact@yanisdib.com>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.13"
+opencv-python-headless = "^4.12.0.88"
+numpy = ">=2.0,<2.3.0"
+matplotlib = "^3.10.6"
+scikit-image = "^0.25.2"
+pydantic = "^2.11.9"
+fastapi = "^0.117.1"
+uvicorn = "^0.37.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
