@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /workspaces/somint
+cd /workspaces/somint/engine
 
 # Force Poetry to create venvs in the project directory
 export POETRY_VIRTUALENVS_CREATE=1
