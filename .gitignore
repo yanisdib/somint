@@ -2,4 +2,5 @@
 __pychache__/
 *.pyc
 .cache
-.venvs/
+.venv/
+agents/
