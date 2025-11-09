@@ -31,6 +31,10 @@ def rescale(img: ndarray, scale: float = DEFAULT_RESCALE_VALUE):
         >>> print(f"Rescaled dimensions: {rescaled_img.shape[1]}x{rescaled_img.shape[0]}")
         Rescaled dimensions: 300x200
     """
+
+    if scale == 1:
+        return img
+
     width: int = int(img.shape[1] * scale)
     height: int = int(img.shape[0] * scale)
     dimensions: tuple[int, int] = (width, height)
