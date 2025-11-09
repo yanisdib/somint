@@ -1,9 +1,14 @@
+from typing import Final
 import cv2 as cv
 from numpy import ndarray
 from engine.schemas.image import CropRegion
 
 
-def rescale(img: ndarray, scale: float = 0.75):
+DEFAULT_RESCALE_VALUE: Final[float] = 0.75
+EMPTY_REGION: Final[CropRegion] = CropRegion(x_start=0, y_start=0, x_end=0, y_end=0)
+
+
+def rescale(img: ndarray, scale: float = DEFAULT_RESCALE_VALUE):
     """Rescales an image by a given factor.
 
     Args:
@@ -33,7 +38,7 @@ def rescale(img: ndarray, scale: float = 0.75):
     return cv.resize(img, dimensions, interpolation=cv.INTER_AREA)
 
 
-def crop(img: ndarray, region: CropRegion):
+def crop(img: ndarray, region: CropRegion = EMPTY_REGION):
     """Crops an image to a specified region using start and end coordinates.
 
     Args:
@@ -57,6 +62,10 @@ def crop(img: ndarray, region: CropRegion):
         >>> print(f"Cropped dimensions: {cropped_img.shape[1]}x{cropped_img.shape[0]}")
         Cropped dimensions: 100x100
     """
+
+    if region is EMPTY_REGION:
+        return img
+
     y_start = region.y_start
     y_end = region.y_end
     x_start = region.x_start
