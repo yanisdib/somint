@@ -1,29 +1,17 @@
+from detection.card_detection import detect_pokemon_card
 
-from fastapi import FastAPI, UploadFile, File
-from typing import Optional
-import uvicorn
+TEST_CARD_FRONT = "data/raw/199_165_charizard_front.webp"
+TEST_CARD_BACK = "data/raw/199_165_charizard_back.webp"
+TEST_CARD_FRONT_ALTER = "data/raw/199_165_charizard_front_02.webp"
+TEST_CARD_BACK_ALTER = "data/raw/199_165_charizard_back_02.webp"
 
-app = FastAPI(
-    title="Somint Grading Engine",
-    description="AI-powered TCG grading service.",
-    version="0.1.0",
-)
 
-@app.get("/")
-def read_root():
-    """A simple endpoint to confirm the server is running."""
-    return {"message": "Welcome to the Somint Grading Engine"}
+def main():
+    detect_pokemon_card(TEST_CARD_FRONT)
+    detect_pokemon_card(TEST_CARD_BACK)
+    detect_pokemon_card(TEST_CARD_FRONT_ALTER)
+    detect_pokemon_card(TEST_CARD_BACK_ALTER)
 
-@app.post("/grade-card/")
-async def grade_card_image(file: UploadFile = File(...)):
-    """
-    Placeholder endpoint for the grading pipeline.
-
-    This will eventually take an image, run it through the CV pipeline,
-    and return a detailed grading report.
-    """
-    # For now, just return the filename and content type
-    return {"filename": file.filename, "content_type": file.content_type}
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    main()
