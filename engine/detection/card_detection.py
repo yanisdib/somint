@@ -12,7 +12,7 @@ POKEMON_CARD_RESOLUTION: Final[tuple[int, int, int]] = (1505, 2096, 3)
 DEFAULT_SIGMA_VALUE: Final[float] = 0.33
 
 
-# TODO: Card detection needs finetuning
+# TODO: Edge detection needs finetuning
 # Current implementation struggles to find sleeved cards in specific cases
 def detect_pokemon_card(filepath: str) -> Mat | None:
     """
@@ -23,42 +23,27 @@ def detect_pokemon_card(filepath: str) -> Mat | None:
         print(f"Could not read image at {filepath}")
         return None
 
-    print("Step 1: Original Image. Press any key to continue...")
-    cv.imshow("1. Original", img)
-    cv.waitKey(0)
-
     if is_back_card(filepath):
         gray_img = cv.split(img)[0]
     else:
         gray_img: Mat = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
-    print("Step 2: Grayscale Conversion. Press any key...")
-    cv.imshow("2. Grayscale", gray_img)
-    cv.waitKey(0)
-
-    blurred_img: Mat = cv.GaussianBlur(gray_img, (7, 7), 1.0)
-    print("Step 3: Gaussian Blur. Press any key...")
-    cv.imshow("3. Blurred", blurred_img)
-    cv.waitKey(0)
-
+    blurred_img: Mat = cv.GaussianBlur(gray_img, (7, 7), 1)
     binary_img = cv.adaptiveThreshold(
-        blurred_img, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 21, 3
+        blurred_img, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 3
     )
-    print("Step 4: Adaptive Threshold. Press any key...")
-    cv.imshow("4. Binary Image", binary_img)
-    cv.waitKey(0)
+    cv.imshow("Combined", binary_img)
 
+    kernel = cv.getStructuringElement(cv.MORPH_DIAMOND, (3, 3))
+    cleaned_img = cv.morphologyEx(binary_img, cv.MORPH_CLOSE, kernel, iterations=1)
+    cv.imshow("Cleaned", cleaned_img)
     contours, hierarchy = cv.findContours(
-        binary_img, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE
+        cleaned_img, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE
     )
 
     all_contours_vis = img.copy()
     cv.drawContours(all_contours_vis, contours, -1, (0, 255, 0), 1)
-    print("Step 5: All Contours Found. Press any key...")
-    cv.imshow("5. All Contours", all_contours_vis)
-    cv.waitKey(0)
 
-    # --- Find and Visualize The Card Contour ---
     card_shape, area = find_card_shape(contours, hierarchy)
     if card_shape.size == 0:
         print("No card found. Exiting.")
@@ -66,12 +51,9 @@ def detect_pokemon_card(filepath: str) -> Mat | None:
         return None
 
     chosen_contour_vis = img.copy()
-    cv.drawContours(chosen_contour_vis, [np.intp(card_shape)], -1, (0, 0, 255), 2)
-    print("Step 6: Chosen Card Contour. Press any key...")
-    cv.imshow("6. Chosen Contour", chosen_contour_vis)
-    cv.waitKey(0)
+    cv.drawContours(chosen_contour_vis, [np.intp(card_shape)], -1, (0, 255, 0), 2)
+    cv.imshow("Contoured", chosen_contour_vis)
 
-    # --- Perspective Transform ---
     width, height, _ = POKEMON_CARD_RESOLUTION
     sorted_corners = sort_corners(card_shape)
     destination_corners = np.array(
@@ -151,21 +133,18 @@ def find_card_shape(contours: Sequence[Mat], hierarchy: Mat) -> tuple[Mat, float
 
     for i, contour in enumerate(contours):
         area = cv.contourArea(contour)
-        # Basic size filter
+
         if area > 5000:
             peri = cv.arcLength(contour, True)
-            approx_parent = cv.approxPolyDP(contour, 0.01 * peri, True)
+            approx_parent = cv.approxPolyDP(contour, 0.02 * peri, True)
 
             # Check if this contour is a 4-sided parent
             if len(approx_parent) == 4:
-                # This is a 4-sided parent, now check if it has a child
                 # The index of the first child is at hierarchy[0][i][2]
                 child_index = hierarchy[0][i][2]
 
                 if child_index != -1:
-                    # It has a child, check if it's the best candidate so far
                     if area > best_candidate["area"]:
-                        # This is our best guess for the card so far
                         best_candidate["contour"] = contour
                         best_candidate["area"] = area
                 else:
@@ -197,3 +176,10 @@ def sort_corners(shape: Mat) -> list[Mat]:
         points[bottom_right],
         points[bottom_left],
     ]
+
+
+def combine_edge_detection(adaptive_img: Mat, canny_img: Mat) -> Mat:
+    combined = cv.bitwise_or(adaptive_img, canny_img)
+    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3))
+    cleaned = cv.morphologyEx(combined, cv.MORPH_CLOSE, kernel, iterations=1)
+    return cleaned
