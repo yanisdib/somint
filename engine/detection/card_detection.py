@@ -28,17 +28,25 @@ def detect_pokemon_card(filepath: str) -> Mat | None:
     else:
         gray_img: Mat = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
-    blurred_img: Mat = cv.GaussianBlur(gray_img, (7, 7), 1)
-    binary_img = cv.adaptiveThreshold(
-        blurred_img, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, 3
-    )
-    cv.imshow("Combined", binary_img)
+    sobel_x = cv.Sobel(gray_img, cv.CV_64F, 2, 0, ksize=3)
+    sobel_y = cv.Sobel(gray_img, cv.CV_64F, 0, 2, ksize=3)
+    gradient_magnitude = cv.magnitude(sobel_x, sobel_y)
+    gradient_magnitude = cv.convertScaleAbs(gradient_magnitude)
 
-    kernel = cv.getStructuringElement(cv.MORPH_DIAMOND, (3, 3))
-    cleaned_img = cv.morphologyEx(binary_img, cv.MORPH_CLOSE, kernel, iterations=1)
-    cv.imshow("Cleaned", cleaned_img)
+    blurred_img: Mat = cv.GaussianBlur(gradient_magnitude, (5, 5), 1)
+    _, binary_img = cv.threshold(blurred_img, 30, 255, cv.THRESH_BINARY)
+
+    kernel_clean = cv.getStructuringElement(cv.MORPH_RECT + cv.MORPH_ELLIPSE, (3, 3))
+    thresh_clean = cv.morphologyEx(
+        binary_img, cv.MORPH_OPEN, kernel_clean, iterations=4
+    )
+    thresh_clean = cv.morphologyEx(
+        thresh_clean, cv.MORPH_CLOSE, kernel_clean, iterations=7
+    )
+
+    cv.imshow("Cleaned", thresh_clean)
     contours, hierarchy = cv.findContours(
-        cleaned_img, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE
+        thresh_clean, cv.RETR_TREE, cv.CHAIN_APPROX_NONE
     )
 
     all_contours_vis = img.copy()
@@ -127,7 +135,6 @@ def find_card_shape(contours: Sequence[Mat], hierarchy: Mat) -> tuple[Mat, float
     """
     best_candidate = {"contour": None, "area": 0}
 
-    # The hierarchy is wrapped in an extra array, so we access it with hierarchy[0]
     if hierarchy is None:
         return np.array([]), 0.0
 
@@ -138,7 +145,6 @@ def find_card_shape(contours: Sequence[Mat], hierarchy: Mat) -> tuple[Mat, float
             peri = cv.arcLength(contour, True)
             approx_parent = cv.approxPolyDP(contour, 0.02 * peri, True)
 
-            # Check if this contour is a 4-sided parent
             if len(approx_parent) == 4:
                 # The index of the first child is at hierarchy[0][i][2]
                 child_index = hierarchy[0][i][2]
@@ -153,7 +159,6 @@ def find_card_shape(contours: Sequence[Mat], hierarchy: Mat) -> tuple[Mat, float
     if best_candidate["contour"] is None:
         return np.array([]), 0.0
 
-    # Return precise corners
     rect = cv.minAreaRect(best_candidate["contour"])
     box = cv.boxPoints(rect)
 
@@ -176,10 +181,3 @@ def sort_corners(shape: Mat) -> list[Mat]:
         points[bottom_right],
         points[bottom_left],
     ]
-
-
-def combine_edge_detection(adaptive_img: Mat, canny_img: Mat) -> Mat:
-    combined = cv.bitwise_or(adaptive_img, canny_img)
-    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3))
-    cleaned = cv.morphologyEx(combined, cv.MORPH_CLOSE, kernel, iterations=1)
-    return cleaned
