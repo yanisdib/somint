@@ -12,13 +12,16 @@ POKEMON_CARD_RESOLUTION: Final[tuple[int, int, int]] = (1505, 2096, 3)
 DEFAULT_SIGMA_VALUE: Final[float] = 0.33
 
 
-# TODO: Edge detection needs finetuning
-# Current implementation struggles to find sleeved cards in specific cases
 def detect_pokemon_card(filepath: str) -> Mat | None:
+    """Detects and extracts card from a picture.
+
+    Args:
+        filepath (str): path or url of the uploaded image
+
+    Returns:
+        Mat | None: a standardized interim card
     """
-    Detects a Pokémon card from a picture, showing each processing step.
-    """
-    img: Mat | None = cv.imread(filepath)
+    img: Mat | None = cv.imread(filepath, cv.IMREAD_UNCHANGED)
     if img is None:
         print(f"Could not read image at {filepath}")
         return None
@@ -28,77 +31,42 @@ def detect_pokemon_card(filepath: str) -> Mat | None:
     else:
         gray_img: Mat = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
-    sobel_x = cv.Sobel(gray_img, cv.CV_64F, 2, 0, ksize=3)
-    sobel_y = cv.Sobel(gray_img, cv.CV_64F, 0, 2, ksize=3)
-    gradient_magnitude = cv.magnitude(sobel_x, sobel_y)
-    gradient_magnitude = cv.convertScaleAbs(gradient_magnitude)
-
-    blurred_img: Mat = cv.GaussianBlur(gradient_magnitude, (5, 5), 1)
-    _, binary_img = cv.threshold(blurred_img, 30, 255, cv.THRESH_BINARY)
-
-    kernel_clean = cv.getStructuringElement(cv.MORPH_RECT + cv.MORPH_ELLIPSE, (3, 3))
-    thresh_clean = cv.morphologyEx(
-        binary_img, cv.MORPH_OPEN, kernel_clean, iterations=4
-    )
-    thresh_clean = cv.morphologyEx(
-        thresh_clean, cv.MORPH_CLOSE, kernel_clean, iterations=7
-    )
-
-    cv.imshow("Cleaned", thresh_clean)
+    cleaned_img: Mat = apply_image_corrections(gray_img)
     contours, hierarchy = cv.findContours(
-        thresh_clean, cv.RETR_TREE, cv.CHAIN_APPROX_NONE
+        cleaned_img, cv.RETR_TREE, cv.CHAIN_APPROX_NONE
     )
 
-    all_contours_vis = img.copy()
-    cv.drawContours(all_contours_vis, contours, -1, (0, 255, 0), 1)
-
-    card_shape, area = find_card_shape(contours, hierarchy)
+    card_shape, _ = find_card_shape(contours, hierarchy)
     if card_shape.size == 0:
         print("No card found. Exiting.")
         cv.destroyAllWindows()
         return None
 
-    chosen_contour_vis = img.copy()
-    cv.drawContours(chosen_contour_vis, [np.intp(card_shape)], -1, (0, 255, 0), 2)
-    cv.imshow("Contoured", chosen_contour_vis)
-
+    contoured_img = img.copy()
+    card_shape = card_shape.reshape((-1, 1, 2)).astype(np.int32)
+    cv.drawContours(contoured_img, [card_shape], -1, (0, 255, 0), 2)
     width, height, _ = POKEMON_CARD_RESOLUTION
     sorted_corners = sort_corners(card_shape)
+
     destination_corners = np.array(
         [[0, 0], [width, 0], [width, height], [0, height]], dtype="float32"
     )
 
-    matrix = cv.getPerspectiveTransform(
-        np.array(sorted_corners, dtype="float32"), destination_corners
-    )
-    warped_card: Mat = cv.warpPerspective(
-        img, matrix, (width, height), flags=cv.INTER_CUBIC
+    interim_card = normalize_card(
+        img, sorted_corners, destination_corners, width, height
     )
 
-    print("Step 7: Final Warped Card. Press any key to close all windows.")
-    cv.imshow("7. Warped Card", warped_card)
+    cv.imshow("Normalized Card", interim_card)
+    print("Press any key to close all windows.")
     cv.waitKey(0)
-
-    print("Processing complete.")
     cv.destroyAllWindows()
 
-    return warped_card
+    filename: str = (
+        INTERIM_DIR + INTERIM_FILE_SUFFIX + filepath.removeprefix("data/raw/")
+    )
+    cv.imwrite(filename, interim_card)
 
-
-def apply_auto_canny(img: Mat, sigma: float = 0.33):
-    """Applies automatic edge detection
-
-    Args:
-        img (Mat): target image
-        sigma (float, optional): quantifier. Defaults to 0.33.
-
-    Returns:
-        _type_: _description_
-    """
-    median_value = np.median(img)
-    lower: float = int(min(255, (1.0 + sigma) * median_value))
-    higher: float = int(max(0, (1.0 - sigma) * median_value))
-    return cv.Canny(img, lower, higher)
+    return interim_card
 
 
 def is_back_card(filename: str) -> bool:
@@ -113,6 +81,48 @@ def is_back_card(filename: str) -> bool:
         bool: whether is the card's back or not
     """
     return filename.__contains__("back")
+
+
+def apply_sobel(gray_img: Mat) -> Mat:
+    sobel_x = cv.Sobel(gray_img, cv.CV_64F, 2, 0, ksize=3)
+    sobel_y = cv.Sobel(gray_img, cv.CV_64F, 0, 2, ksize=3)
+    gradient_magnitude = cv.magnitude(sobel_x, sobel_y)
+    return cv.convertScaleAbs(gradient_magnitude)
+
+
+def apply_closing(binary_img: Mat) -> Mat:
+    """Cleans binary image using Closing (Dilation -> Erosion) technique
+
+    Args:
+        binary_img (Mat): binary image to clean
+
+    Returns:
+        Mat: cleaned binary image
+    """
+    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3))
+    threshold = cv.morphologyEx(binary_img, cv.MORPH_OPEN, kernel, iterations=0)
+
+    return cv.morphologyEx(threshold, cv.MORPH_CLOSE, kernel, iterations=0)
+
+
+def apply_image_corrections(gray_img: Mat) -> Mat:
+    blurred_img: Mat = cv.GaussianBlur(gray_img, (3, 3), 0)
+    _, binary_img = cv.threshold(blurred_img, 28, 255, cv.THRESH_BINARY)
+    return apply_closing(binary_img)
+
+
+def normalize_card(
+    source_img: Mat,
+    sorted_corners: list[Mat],
+    destination_corners: Mat,
+    width: int,
+    height: int,
+) -> Mat:
+    matrix = cv.getPerspectiveTransform(
+        np.array(sorted_corners, dtype="float32"), destination_corners
+    )
+
+    return cv.warpPerspective(source_img, matrix, (width, height), flags=cv.INTER_CUBIC)
 
 
 def create_blank_image(shape: tuple[int, int, int], dtype=np.uint8) -> Mat:
@@ -138,23 +148,19 @@ def find_card_shape(contours: Sequence[Mat], hierarchy: Mat) -> tuple[Mat, float
     if hierarchy is None:
         return np.array([]), 0.0
 
-    for i, contour in enumerate(contours):
+    for contour in contours:
         area = cv.contourArea(contour)
 
-        if area > 5000:
-            peri = cv.arcLength(contour, True)
-            approx_parent = cv.approxPolyDP(contour, 0.02 * peri, True)
+        if area > 10000:
+            hull = cv.convexHull(contour)
+            peri = cv.arcLength(hull, True)
+            approx_parent = cv.approxPolyDP(contour, 0.01 * peri, True)
 
             if len(approx_parent) == 4:
-                # The index of the first child is at hierarchy[0][i][2]
-                child_index = hierarchy[0][i][2]
-
-                if child_index != -1:
-                    if area > best_candidate["area"]:
-                        best_candidate["contour"] = contour
-                        best_candidate["area"] = area
-                else:
-                    print("This 4-sided contour has no child.")
+                best_candidate["contour"] = contour
+                best_candidate["area"] = area
+            else:
+                print("This contour is not a card")
 
     if best_candidate["contour"] is None:
         return np.array([]), 0.0
